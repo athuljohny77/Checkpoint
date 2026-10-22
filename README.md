@@ -1,0 +1,52 @@
+# Checkpoint
+
+A compact, always-on-top Windows task widget.
+
+## Run on Windows
+
+Open `dist/Checkpoint-1.0.0-Windows.exe` after building. This portable app needs no installation or separate Node.js runtime. Keep the executable somewhere permanent and launch it when you sign in; it does not add itself to Windows startup.
+
+- **Ctrl + Shift + Space** opens quick capture in the center of the display under your pointer, even while another app is focused.
+- Type a task and press **Enter** to save. **Esc** dismisses the box. An unfinished draft stays there until you save it or quit.
+- Check a task to strike it through; uncheck it to reopen it.
+- The floating task window stays above other windows and can be resized. Closing it keeps Checkpoint in the system tray. Double-click the tray icon to reopen it. Right-click → **Quit Checkpoint** to exit fully.
+- Change the global shortcut in **Settings & shortcuts** if another app uses it. Alternatives are **Ctrl + Alt + Space** and **Ctrl + Shift + K**.
+- In the main window, **Ctrl + N** focuses the task input and **/** focuses search.
+
+Tasks support starring, searching, sorting, editing, and deletion with an eight-second Undo action. No sample tasks are added to your real task list.
+
+## Development
+
+Requires Windows and Node.js 22 or later.
+
+```powershell
+npm.cmd ci
+npm.cmd start
+npm.cmd test
+npm.cmd run test:e2e
+npm.cmd run build
+```
+
+`npm.cmd` works in PowerShell without changing its execution policy. `npm.cmd run build:installer` optionally creates an NSIS installer. Release artifacts are unsigned; Windows may display a publisher warning. Release signing should be configured before public distribution.
+
+The end-to-end suite verifies OS shortcut registration, capture positioning, task flows, and restart persistence. Its native keypress test skips when Windows denies access to the input desktop or synthetic input. In that case, manually verify **Ctrl + Shift + Space** while another app is focused and while Checkpoint is in the tray.
+
+## Local data
+
+Tasks and the selected shortcut are saved in `%APPDATA%\Checkpoint\tasks.json`. Changes are written to a temporary file and atomically replace the previous save. If existing data cannot be parsed, the original is preserved as `tasks.json.recovered-<timestamp>` and a recovery notice appears in the app. Back up this folder to move tasks to another device. Delete/Undo history lasts only for the current session.
+
+The app runs fully offline with no accounts, analytics, remote fonts, or cloud services. Task data is stored as plain JSON under your Windows account. Renderer windows are sandboxed, with context isolation and a narrow IPC bridge. Text is escaped before rendering.
+
+## Structure
+
+- `src/main.cjs`: Windows lifecycle, global shortcut, tray, windows, validated IPC.
+- `src/store.cjs`: Task validation, storage, recovery, and undo.
+- `src/preload.cjs`: Limited renderer API.
+- `src/renderer/`: Main interface and quick capture.
+- `tests/`: Store tests and an Electron end-to-end test using an isolated temporary data directory.
+- `scripts/generate-icon.cjs`: Regenerates the original PNG and ICO app mark.
+- `artifacts/`: Screenshots produced by the end-to-end test with isolated example tasks.
+
+The Figma reference could not be accessed during the initial implementation. This version uses an original charcoal-and-lime interface; it is not a verified match to that file.
+
+Built with Electron. See its [global shortcut documentation](https://www.electronjs.org/docs/latest/api/global-shortcut) for platform behavior.

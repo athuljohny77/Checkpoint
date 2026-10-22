@@ -1,0 +1,40 @@
+{
+  "name": "checkpoint",
+  "productName": "Checkpoint",
+  "version": "1.0.0",
+  "description": "A quiet place for your tasks. Capture a thought from anywhere on Windows.",
+  "author": "Checkpoint",
+  "license": "MIT",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/store.test.cjs",
+    "test:e2e": "playwright test",
+    "build": "electron-builder --win portable --x64",
+    "build:installer": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.checkpoint.desktop",
+    "productName": "Checkpoint",
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "asar": true,
+    "win": {
+      "icon": "assets/checkpoint.ico",
+      "target": ["portable"],
+      "signExecutable": false
+    },
+    "portable": { "artifactName": "Checkpoint-${version}-Windows.exe" },
+    "nsis": {
+      "artifactName": "Checkpoint-${version}-Setup.exe",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

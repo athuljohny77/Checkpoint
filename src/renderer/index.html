@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Checkpoint</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="widget-body">
+  <header class="titlebar">
+    <span class="titlebar-name">Checkpoint</span>
+    <div class="window-controls">
+      <button data-window="minimize" aria-label="Minimize" title="Minimize"><i data-icon="minus"></i></button>
+      <button data-window="close" aria-label="Close to tray" title="Hide"><i data-icon="x"></i></button>
+    </div>
+  </header>
+  <main class="widget-main">
+    <section class="widget-heading">
+      <h1 id="page-title">All tasks</h1>
+      <div class="widget-actions">
+        <button id="tip-capture" class="icon-button" title="Quick capture" aria-label="Quick capture"><i data-icon="bolt"></i></button>
+        <button id="settings-open" class="icon-button" title="Settings" aria-label="Settings"><i data-icon="settings"></i></button>
+      </div>
+    </section>
+    <nav class="widget-views" aria-label="Task views">
+      <button class="nav-item selected" data-view="all" aria-current="page"><span>All</span><span class="nav-count" id="all-count">0</span></button>
+      <button class="nav-item" data-view="starred"><span>Starred</span><span class="nav-count" id="starred-count">0</span></button>
+      <button class="nav-item" data-view="completed"><span>Done</span><span class="nav-count" id="completed-count">0</span></button>
+    </nav>
+    <div id="system-notice" class="system-notice" hidden role="status"></div>
+    <section class="tasks-section" aria-label="Tasks">
+      <div class="task-toolbar">
+        <div class="task-tabs" role="group" aria-label="Filter tasks">
+          <button class="active" data-filter="all" aria-pressed="true">All <span id="filter-all-count">0</span></button>
+          <button data-filter="active" aria-pressed="false">Active</button>
+          <button data-filter="done" aria-pressed="false">Done</button>
+        </div>
+        <div class="task-tools">
+          <label class="search-box"><i data-icon="search"></i><input id="search" type="search" placeholder="Search" aria-label="Search tasks" maxlength="500"><kbd>/</kbd></label>
+          <label class="sort-select" title="Sort tasks"><i data-icon="sort"></i><select id="sort" aria-label="Sort tasks"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="az">A to Z</option></select></label>
+        </div>
+      </div>
+      <form id="add-form" class="inline-add">
+        <span class="add-circle"><i data-icon="plus"></i></span>
+        <input id="task-input" type="text" maxlength="500" autocomplete="off" placeholder="Add a task" aria-label="New task">
+        <button type="submit" aria-label="Add task" title="Add task"><span>Add</span><i data-icon="corner-down-left"></i></button>
+      </form>
+      <div id="task-list" class="task-list"></div>
+      <div id="empty-state" class="empty-state">
+        <h2 id="empty-title">No tasks yet</h2>
+        <p id="empty-description">Add a task to get started.</p>
+        <button class="text-button" id="empty-add">Add task <i data-icon="arrow-right"></i></button>
+      </div>
+      <div id="list-footer" class="list-footer" hidden><span id="remaining-count"></span></div>
+    </section>
+    <footer class="main-footer"><span><i data-icon="check"></i><span id="save-status">Saved locally</span></span></footer>
+  </main>
+  <div id="toast" class="toast" role="status" hidden><i data-icon="circle-check"></i><span id="toast-message"></span><button id="toast-undo" hidden>Undo</button><button id="toast-dismiss" class="icon-button" aria-label="Dismiss message"><i data-icon="x"></i></button></div>
+  <dialog id="settings-dialog">
+    <form method="dialog" class="dialog-content">
+      <div class="dialog-heading"><h2>Settings</h2><button class="icon-button" aria-label="Close settings"><i data-icon="x"></i></button></div>
+      <label class="setting-label" for="shortcut-select">Quick capture shortcut</label>
+      <select id="shortcut-select"><option value="Control+Shift+Space">Ctrl + Shift + Space</option><option value="Control+Alt+Space">Ctrl + Alt + Space</option><option value="Control+Shift+K">Ctrl + Shift + K</option></select>
+      <p id="shortcut-status" class="setting-help"></p>
+      <div class="settings-note"><i data-icon="inbox"></i><div><strong>System tray</strong><p>Closing the window hides it. Right-click the tray icon to quit.</p></div></div>
+      <div class="settings-note"><i data-icon="shield"></i><div><strong>Local storage</strong><p>Tasks are saved on this Windows account.</p></div></div>
+      <div class="dialog-footer"><span>Checkpoint <span class="version">v1.0.0</span></span><button type="button" class="text-button muted" id="quit-app">Quit app <i data-icon="arrow-right"></i></button></div>
+    </form>
+  </dialog>
+  <dialog id="edit-dialog">
+    <form id="edit-form" class="dialog-content">
+      <div class="dialog-heading"><h2>Edit task</h2><button type="button" id="edit-close" class="icon-button" aria-label="Cancel editing"><i data-icon="x"></i></button></div>
+      <label class="setting-label" for="edit-input">Task</label>
+      <textarea id="edit-input" maxlength="500" rows="4" required></textarea>
+      <div class="edit-actions"><button type="button" class="secondary" id="edit-cancel">Cancel</button><button type="submit" class="primary">Save changes <i data-icon="check"></i></button></div>
+    </form>
+  </dialog>
+  <script src="icons.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
