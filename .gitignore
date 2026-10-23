@@ -1,6 +1,7 @@
 node_modules/
-dist/
+dist/win-unpacked/
 test-results/
 playwright-report/
 .test-data/
 *.log
+dist/builder-debug.yml
