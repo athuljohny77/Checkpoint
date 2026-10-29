@@ -24,9 +24,11 @@ test('portable helper waits, replaces the launcher, keeps a backup and starts th
   fs.writeFileSync(config,JSON.stringify({download:executable,sha256:crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex'),
     version:'9.0.0',pid:parent.pid,mode:'portable',target,ready}));
   const helper=spawn('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.resolve('src/install-update.ps1'),'-Config',config],
-    {windowsHide:true,stdio:'ignore',env:{...process.env,CHECKPOINT_UPDATE_MARKER:marker}});
+    {windowsHide:true,stdio:['ignore','ignore','pipe'],env:{...process.env,CHECKPOINT_UPDATE_MARKER:marker}});
+  let stderr='';helper.stderr.on('data',chunk=>{stderr+=chunk;});
   const exit=await new Promise((resolve,reject)=>{helper.once('error',reject);helper.once('exit',resolve);});
-  assert.equal(exit,0);
+  const resultFile=path.join(directory,'install-result.json');
+  assert.equal(exit,0,fs.existsSync(resultFile)?fs.readFileSync(resultFile,'utf8'):stderr);
   assert.ok(fs.existsSync(ready));
   assert.deepEqual(fs.readFileSync(target),fs.readFileSync(executable));
   assert.deepEqual(fs.readFileSync(target+'.previous'),previous);
