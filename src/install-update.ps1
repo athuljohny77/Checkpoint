@@ -3,7 +3,10 @@ $ErrorActionPreference = 'Stop'
 $updateConfig = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
 $updateLog = Join-Path (Split-Path -Parent $Config) 'install-result.json'
 try {
-  $actualHash = (Get-FileHash -LiteralPath $updateConfig.download -Algorithm SHA256).Hash.ToLowerInvariant()
+  $hashAlgorithm = [Security.Cryptography.SHA256]::Create()
+  $downloadStream = [IO.File]::OpenRead($updateConfig.download)
+  try { $actualHash = [BitConverter]::ToString($hashAlgorithm.ComputeHash($downloadStream)).Replace('-', '').ToLowerInvariant() }
+  finally { $downloadStream.Dispose(); $hashAlgorithm.Dispose() }
   if ($actualHash -ne $updateConfig.sha256) { throw 'Update verification failed before installation.' }
   # The app waits for this acknowledgement before quitting.
   [IO.File]::WriteAllText($updateConfig.ready, 'ready')
