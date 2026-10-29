@@ -8,7 +8,7 @@ const {execFileSync,spawn}=require('node:child_process');
 
 test('portable helper waits, replaces the launcher, keeps a backup and starts the new executable', {skip:process.platform!=='win32'}, async t=>{
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),"checkpoint-install-test-"));
-  t.after(()=>fs.rmSync(directory,{recursive:true,force:true,maxRetries:10,retryDelay:100}));
+  t.after(async()=>fs.promises.rm(directory,{recursive:true,force:true,maxRetries:20,retryDelay:100}));
   // A harmless test executable records that it ran and immediately exits.
   const executable=path.join(directory,'new.exe');
   const buildScript=path.join(directory,'compile.ps1');
