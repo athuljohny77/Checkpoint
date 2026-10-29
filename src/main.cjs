@@ -4,6 +4,9 @@ const { pathToFileURL } = require('node:url');
 const { TaskStore, SHORTCUTS, ROLLUP_SHORTCUTS } = require('./store.cjs');
 const { gsap } = require('gsap/dist/gsap');
 const { fitBounds } = require('./window-bounds.cjs');
+const fs = require('node:fs');
+const { spawn } = require('node:child_process');
+const { UpdateManager } = require('./updater.cjs');
 
 const isTest = !app.isPackaged && process.env.CHECKPOINT_TEST === '1';
 if (isTest && process.env.CHECKPOINT_DATA_DIR) app.setPath('userData', process.env.CHECKPOINT_DATA_DIR);
@@ -15,6 +18,9 @@ let openingCapture = false;
 let rolledUp = false, expandedHeight = 620, rollupRegistered = false, rollTween, cleanupTimer;
 let startupError = '', cleanupError = '';
 let boundsTimer;
+let updater, updateTimer, initialUpdateTimer;
+let updateInstallPending = false;
+const updateMode = process.env.PORTABLE_EXECUTABLE_FILE ? 'portable' : 'installer';
 const rendererPath = path.join(__dirname, 'renderer');
 const pages = ['index.html', 'capture.html'].map(name => pathToFileURL(path.join(rendererPath, name)).href);
 
@@ -28,7 +34,8 @@ else {
 }
 
 function state() {
-  return { ...store.snapshot(), shortcutRegistered, rollupRegistered, rolledUp, appVersion: app.getVersion(), startupError, cleanupError, recoveryMessage: store.recoveryMessage };
+  return { ...store.snapshot(), shortcutRegistered, rollupRegistered, rolledUp, appVersion: app.getVersion(), startupError, cleanupError, recoveryMessage: store.recoveryMessage,
+    update: updater?.snapshot(), canInstallUpdates: app.isPackaged && process.platform === 'win32' };
 }
 function broadcast() {
   for (const win of [mainWindow, captureWindow]) {
@@ -41,6 +48,57 @@ function showMain() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+}
+function showUpdateSettings() {
+  if (rolledUp) toggleRollup();
+  showMain();
+  mainWindow.webContents.send('update:open-settings');
+}
+async function installUpdate() {
+  if (updateInstallPending) return updater.snapshot();
+  updateInstallPending = true;
+  try { return await performInstallUpdate(); }
+  finally { updateInstallPending = false; }
+}
+async function performInstallUpdate() {
+  if (!app.isPackaged || isTest) throw new Error('Install updates from the packaged Windows app.');
+  if (!updater.release || !['available', 'error', 'ready'].includes(updater.status.phase)) throw new Error('Check for an available update first.');
+  // Only a native confirmation permits downloading and executing a release.
+  const confirmedRelease = updater.release;
+  const { response } = await dialog.showMessageBox(mainWindow, { type: 'question',
+    title: 'Install Checkpoint update?', message: `Install Checkpoint ${confirmedRelease.version}?`,
+    detail: 'The update will be downloaded and verified. Checkpoint will then close, install the update, and reopen. Your tasks and settings will be kept.',
+    buttons: ['Download and install', 'Cancel'], defaultId: 1, cancelId: 1, noLink: true });
+  if (response !== 0) return updater.snapshot();
+  if (updater.release !== confirmedRelease) throw new Error('The release information changed. Please review the update and confirm again.');
+  try {
+    const download = await updater.download();
+    const directory = updater.directory;
+    const helper = path.join(directory, 'install-update.ps1');
+    const configPath = path.join(directory, 'install-config.json');
+    const ready = path.join(directory, 'installer-ready');
+    fs.rmSync(ready, { force: true });
+    fs.copyFileSync(path.join(__dirname, 'install-update.ps1'), helper);
+    fs.writeFileSync(configPath, JSON.stringify({ download: download.file, sha256: download.sha256, version: download.version,
+      pid: process.pid, mode: updateMode, target: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, ready }));
+    const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const child = spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', helper, '-Config', configPath], {
+      detached: true, stdio: 'ignore', windowsHide: true
+    });
+    await new Promise((resolve, reject) => {
+      const started = Date.now();
+      const timer = setInterval(() => {
+        if (fs.existsSync(ready)) { clearInterval(timer); resolve(); }
+        else if (Date.now() - started > 15000) { clearInterval(timer); child.kill(); reject(new Error('The update installer could not start. Checkpoint is still running; please retry.')); }
+      }, 100);
+      child.once('error', error => { clearInterval(timer); reject(error); });
+      child.once('exit', code => { if (!fs.existsSync(ready)) { clearInterval(timer); reject(new Error(`The update installer exited before starting (${code}).`)); } });
+    });
+    child.unref();
+    updater.change({ phase: 'installing' });
+    app.quit();
+    return updater.snapshot();
+  } catch (error) { updater.change({ phase: 'error', error: error.message }); throw error; }
 }
 async function showCapture() {
   if (openingCapture) return;
@@ -144,6 +202,7 @@ function updateTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Checkpoint', click: showMain },
     { label: 'Quick capture', accelerator: store.state.settings.shortcut, click: () => void showCapture() },
+    { label: updater?.status.version ? `Update available: v${updater.status.version}` : 'Check for updates', click: () => { showUpdateSettings(); if (!updater.status.version) void updater.check(); } },
     { type: 'separator' },
     { label: `${count} task${count === 1 ? '' : 's'} left`, enabled: false },
     { type: 'separator' },
@@ -156,6 +215,25 @@ async function start() {
   app.setAppUserModelId('com.checkpoint.desktop');
   Menu.setApplicationMenu(null);
   store = new TaskStore(app.getPath('userData'));
+  updater = new UpdateManager({ currentVersion: app.getVersion(), mode: updateMode,
+    directory: path.join(app.getPath('userData'), 'updates'),
+    ...(isTest && process.env.CHECKPOINT_UPDATE_FIXTURE ? { fetchImpl: async () => new Response(fs.readFileSync(process.env.CHECKPOINT_UPDATE_FIXTURE), {status:200}) } : {}),
+    onChange: status => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:changed', status);
+      updateTray();
+    },
+    onAvailable: release => {
+      if (!isTest && tray) tray.displayBalloon({ title: 'Checkpoint update available', content: `Version ${release.version} is ready. Click to review and install.`, iconType: 'info', respectQuietTime: true });
+    }
+  });
+  const installResult = path.join(updater.directory, 'install-result.json');
+  if (fs.existsSync(installResult)) {
+    try {
+      const result = JSON.parse(fs.readFileSync(installResult, 'utf8').replace(/^\uFEFF/, ''));
+      if (!result.ok) updater.change({phase:'error',error:result.error || 'The previous update could not be installed. Please retry.'});
+      fs.unlinkSync(installResult);
+    } catch (error) { console.error('Could not read update result:', error); }
+  }
   try { applyStartup(store.state.settings.launchAtStartup); }
   catch { startupError = 'Windows startup could not be updated. Try changing it in Settings.'; }
   const icon = path.join(__dirname, '..', 'assets', 'checkpoint.png');
@@ -186,6 +264,14 @@ async function start() {
   captureWindow.on('blur', () => { if (!isTest) captureWindow.hide(); });
 
   handle('state:get', () => state());
+  handle('update:check', event => {
+    if (event.sender !== mainWindow.webContents) throw new Error('Open Settings to check for updates.');
+    return updater.check();
+  });
+  handle('update:install', event => {
+    if (event.sender !== mainWindow.webContents) throw new Error('Open Settings to install updates.');
+    return installUpdate();
+  });
   handle('task:add', (_, text, priority) => { store.add(text, priority); broadcast(); return state(); });
   handle('task:update', (_, id, changes) => {
     if (!changes || typeof changes !== 'object') throw new Error('Invalid task changes.');
@@ -242,12 +328,17 @@ async function start() {
   cleanupTimer = setInterval(pruneCompleted, 60000);
   tray = new Tray(nativeImage.createFromPath(icon).resize({ width: 32, height: 32 }));
   tray.on('double-click', showMain);
+  tray.on('balloon-click', showUpdateSettings);
   updateTray();
   captureReady = captureWindow.loadFile(path.join(rendererPath, 'capture.html'));
   await mainWindow.loadFile(path.join(rendererPath, 'index.html'));
   mainWindow.show();
+  if (!isTest && app.isPackaged) {
+    initialUpdateTimer = setTimeout(() => void updater.check(), 15000);
+    updateTimer = setInterval(() => void updater.check(), 6 * 60 * 60 * 1000);
+  }
 }
 app.on('before-quit', () => { saveWindowBounds(); quitting = true; });
-app.on('will-quit', () => { clearInterval(cleanupTimer); rollTween?.kill(); globalShortcut.unregisterAll(); tray?.destroy(); });
+app.on('will-quit', () => { clearTimeout(initialUpdateTimer); clearInterval(updateTimer); clearInterval(cleanupTimer); rollTween?.kill(); globalShortcut.unregisterAll(); tray?.destroy(); });
 app.on('window-all-closed', () => { if (quitting) app.quit(); });
 app.on('activate', showMain);

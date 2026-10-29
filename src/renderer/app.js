@@ -121,6 +121,7 @@ function render(added = new Set()) {
   if (document.activeElement !== $('#retention-days')) $('#retention-days').value = state.settings.retentionDays;
   $('#retention-days').disabled = !state.settings.autoDeleteDone;
   $('#app-version').textContent = `v${state.appVersion}`;
+  renderUpdate(state.update);
   const notices = [state.recoveryMessage, state.startupError, state.cleanupError, !state.shortcutRegistered ? 'Quick capture shortcut unavailable. Change it in Settings.' : '', !state.rollupRegistered ? 'Roll-up shortcut unavailable. Change it in Settings.' : ''].filter(Boolean);
   $('#system-notice').hidden = !notices.length;
   $('#system-notice').textContent = notices.join(' ');
@@ -179,6 +180,33 @@ $('#edit-form').addEventListener('submit',async event=>{
 });
 for(const id of ['#edit-close','#edit-cancel'])$(id).addEventListener('click',()=>$('#edit-dialog').close());
 $('#settings-open').addEventListener('click',()=>motion.dialog($('#settings-dialog')));
+function renderUpdate(update = {}) {
+  const busy = ['checking','downloading','installing'].includes(update.phase);
+  const messages = { idle: 'Check GitHub for the latest version.', checking: 'Checking GitHub…', current: 'You’re up to date.',
+    available: `Version ${update.version} is available.`, downloading: `Downloading update… ${update.progress}%`,
+    ready: 'Update verified and ready to install.', installing: 'Installing update. Checkpoint will reopen shortly.', error: update.error };
+  $('#update-status').textContent = messages[update.phase] || messages.idle;
+  $('#check-updates').disabled = busy;
+  $('#install-update').hidden = !update.version || !state.canInstallUpdates;
+  $('#install-update').disabled = busy;
+  $('#update-progress').hidden = update.phase !== 'downloading';
+  $('#update-progress').value = update.progress || 0;
+  $('#update-details').hidden = !update.notes;
+  $('#update-notes').textContent = update.notes || '';
+}
+api.onUpdate(update => { state.update = update; renderUpdate(update); });
+api.onUpdateSettings(() => {
+  if (!$('#settings-dialog').open) motion.dialog($('#settings-dialog'));
+  $('.update-section').scrollIntoView({block:'nearest'});
+});
+$('#check-updates').addEventListener('click', async () => {
+  try { const update = await request(api.checkUpdates()); state.update = update; renderUpdate(update); } catch {}
+});
+$('#install-update').addEventListener('click', async () => {
+  $('#install-update').disabled = true;
+  try { await request(api.installUpdate()); } catch {}
+  finally { renderUpdate(state.update); }
+});
 $('#rollup-shortcut-select').addEventListener('change', async event => {
   const select = event.target; select.disabled = true;
   try { await request(api.setRollupShortcut(select.value)); notify('Roll-up shortcut updated.'); }

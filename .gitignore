@@ -5,3 +5,8 @@ playwright-report/
 .test-data/
 *.log
 dist/builder-debug.yml
+dist/*.exe
+dist/*.7z
+dist/*.blockmap
+dist/*.yml
+dist/SHA256SUMS.txt

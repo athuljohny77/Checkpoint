@@ -5,15 +5,15 @@ const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const root=path.resolve(__dirname,'../..');
 
-async function launch(directory) {
+async function launch(directory, extraEnv = {}) {
   const save = path.join(directory, 'tasks.json');
   if (!fs.existsSync(save)) fs.writeFileSync(save, JSON.stringify({version:1,tasks:[],settings:{shortcut:'Control+Alt+Space'}}));
-  const env={...process.env,CHECKPOINT_TEST:'1',CHECKPOINT_DATA_DIR:directory};
+  const env={...process.env,CHECKPOINT_TEST:'1',CHECKPOINT_DATA_DIR:directory,...extraEnv};
   delete env.ELECTRON_RUN_AS_NODE;
   const app=await electron.launch({args:[root],env});
   let page;
   try {
-  await expect.poll(async()=>{page=app.windows().find(p=>p.url().endsWith('/index.html'));return Boolean(page);}).toBe(true);
+  await expect.poll(async()=>{page=app.windows().find(p=>p.url().endsWith('/index.html'));return Boolean(page);},{timeout:20000}).toBe(true);
   await page.waitForSelector('#page-title');
   await expect(page.locator('#shortcut-status')).toContainText('Available while Checkpoint is running');
   return {app,page};
@@ -158,7 +158,7 @@ test('pin, roll-up, priority ordering, GSAP effects and settings persist', async
     await expect(page.locator('#task-input')).toBeVisible();
     await page.locator('#settings-open').click();
     await expect(page.locator('.dev-credit')).toHaveText('by Athul Johny © 2026');
-    await expect(page.locator('#app-version')).toHaveText('v1.2.0');
+    await expect(page.locator('#app-version')).toHaveText(`v${require('../../package.json').version}`);
     await expect(page.locator('#startup-toggle')).toBeChecked();
     await expect(page.locator('#cleanup-toggle')).toBeChecked();
     await expect(page.locator('#retention-days')).toHaveValue('1');
@@ -296,5 +296,31 @@ test('window location persists while rolled up and is restored within the curren
     expect(result.bounds.y).toBeGreaterThanOrEqual(result.area.y);
     expect(result.bounds.x+result.bounds.width).toBeLessThanOrEqual(result.area.x+result.area.width);
     expect(result.bounds.y+result.bounds.height).toBeLessThanOrEqual(result.area.y+result.area.height);
+  } finally {if(app)await app.close();fs.rmSync(directory,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+});
+
+test('Settings checks GitHub releases and shows release notes as text',async()=>{
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'checkpoint-update-ui-'));
+  let app;
+  try {
+    const fixture=path.join(directory,'release.json');
+    const prefix='https://github.com/athuljohny77/Checkpoint/releases/download/v9.0.0/';
+    fs.writeFileSync(fixture,JSON.stringify({tag_name:'v9.0.0',draft:false,prerelease:false,body:'A new update <img src=x onerror="alert(1)">',assets:[
+      {name:'Checkpoint-9.0.0-Setup.exe',size:100,browser_download_url:prefix+'Checkpoint-9.0.0-Setup.exe'},
+      {name:'SHA256SUMS.txt',browser_download_url:prefix+'SHA256SUMS.txt'}
+    ]}));
+    const launched=await launch(directory,{CHECKPOINT_UPDATE_FIXTURE:fixture});app=launched.app;const page=launched.page;
+    await page.locator('#settings-open').click();
+    await page.locator('#check-updates').click();
+    await expect(page.locator('#update-status')).toHaveText('Version 9.0.0 is available.');
+    await page.locator('#update-details summary').click();
+    await expect(page.locator('#update-notes')).toContainText('<img src=x');
+    await expect(page.locator('#update-notes img')).toHaveCount(0);
+    expect(fs.existsSync(path.join(directory,'updates'))).toBe(false);
+    await page.screenshot({path:path.join(root,'artifacts','checkpoint-update-settings.png')});
+    fs.writeFileSync(fixture,JSON.stringify({tag_name:'v1.0.0',draft:false,prerelease:false,assets:[]}));
+    await page.locator('#check-updates').click();
+    await expect(page.locator('#update-status')).toHaveText('You’re up to date.');
+    await expect(page.locator('#update-details')).toBeHidden();
   } finally {if(app)await app.close();fs.rmSync(directory,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });

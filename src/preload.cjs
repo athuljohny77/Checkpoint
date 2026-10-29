@@ -9,6 +9,18 @@ contextBridge.exposeInMainWorld('checkpoint', {
   setShortcut: shortcut => ipcRenderer.invoke('settings:shortcut', shortcut),
   setRollupShortcut: shortcut => ipcRenderer.invoke('settings:rollup-shortcut', shortcut),
   updateSettings: changes => ipcRenderer.invoke('settings:update', changes),
+  checkUpdates: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdate: callback => {
+    const listener = (_, status) => callback(status);
+    ipcRenderer.on('update:changed', listener);
+    return () => ipcRenderer.removeListener('update:changed', listener);
+  },
+  onUpdateSettings: callback => {
+    const listener = () => callback();
+    ipcRenderer.on('update:open-settings', listener);
+    return () => ipcRenderer.removeListener('update:open-settings', listener);
+  },
   showCapture: () => ipcRenderer.invoke('capture:show'),
   hideCapture: () => ipcRenderer.invoke('capture:hide'),
   windowAction: action => ipcRenderer.invoke('window:action', action),
