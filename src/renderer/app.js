@@ -1,11 +1,12 @@
 const $ = selector => document.querySelector(selector);
 const api = window.checkpoint;
 let state = { tasks: [], settings: { shortcut: 'Control+Shift+Space' } };
-let view = 'all', filter = 'all', query = '', sort = 'newest', editId;
+let filter = 'all', query = '', sort = 'newest', editId;
+let initialized = false, listMarkup = '';
 let toastTimer, undoId;
 let adding = false;
 const pending = new Set();
-const viewCopy = { all: 'All tasks', starred: 'Starred', completed: 'Completed' };
+const viewCopy = { all: 'All tasks', active: 'Active tasks', done: 'Completed tasks' };
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
@@ -28,14 +29,23 @@ async function request(promise) {
     throw error;
   }
 }
-function acceptState(next) { state = next; render(); }
+function acceptState(next) {
+  const previous = new Map(state.tasks.map(task => [task.id, task]));
+  const added = new Set(initialized ? next.tasks.filter(task => !previous.has(task.id)).map(task => task.id) : []);
+  if (initialized) for (const task of next.tasks) {
+    if (task.done && previous.has(task.id) && !previous.get(task.id).done) {
+      const row = [...document.querySelectorAll('.task-row')].find(row => row.dataset.id === task.id);
+      motion.confetti(row?.getBoundingClientRect());
+    }
+  }
+  const wasRolled = state.rolledUp;
+  state = next; render(added); initialized = true;
+  if (wasRolled && !next.rolledUp) motion.enter($('.widget-main'));
+}
 function focusInput() {
-  if (view === 'completed') switchView('all');
+  if (filter === 'done') { filter = 'all'; render(); }
   $('#task-input').focus();
   $('#task-input').scrollIntoView({ block:'nearest', behavior:'smooth' });
-}
-function switchView(next) {
-  view = next; filter = 'all'; query = ''; $('#search').value = ''; render();
 }
 function taskDate(task) {
   const date = new Date(task.done ? task.completedAt : task.createdAt);
@@ -45,59 +55,80 @@ function taskDate(task) {
   return `${task.done ? 'Completed' : 'Added'} ${label}`;
 }
 function renderTask(task) {
-  return `<article class="task-row ${task.done ? 'done' : ''}" data-id="${escapeHtml(task.id)}"><input class="task-checkbox" type="checkbox" ${task.done ? 'checked' : ''} aria-label="${task.done ? 'Mark incomplete' : 'Complete'}: ${escapeHtml(task.text)}"><div class="task-content"><div class="task-text">${escapeHtml(task.text)}</div><div class="task-date">${taskDate(task)}</div></div><div class="task-actions"><button class="icon-button ${task.starred ? 'starred' : ''}" data-action="star" aria-label="${task.starred ? 'Unstar' : 'Star'} task" aria-pressed="${task.starred}" title="${task.starred ? 'Unstar' : 'Star'} task">${icon('star')}</button><button class="icon-button secondary-action" data-action="edit" aria-label="Edit task" title="Edit task">${icon('edit')}</button><button class="icon-button secondary-action delete" data-action="delete" aria-label="Delete task" title="Delete task">${icon('trash')}</button></div></article>`;
+  return `<article class="task-row ${task.done ? 'done' : ''}" data-id="${escapeHtml(task.id)}"><input class="task-checkbox" type="checkbox" ${task.done ? 'checked' : ''} aria-label="${task.done ? 'Mark incomplete' : 'Complete'}: ${escapeHtml(task.text)}"><div class="task-content"><div class="task-text">${escapeHtml(task.text)}</div><div class="task-date">${taskDate(task)}</div></div><div class="task-actions"><select class="priority-select priority-${task.priority}" data-action="priority" aria-label="Priority: ${escapeHtml(task.text)}" title="Task priority">${['low','medium','high'].map(priority => `<option value="${priority}" ${task.priority === priority ? 'selected' : ''}>${priority[0].toUpperCase()+priority.slice(1)}</option>`).join('')}</select><button class="icon-button secondary-action" data-action="edit" aria-label="Edit task" title="Edit task">${icon('edit')}</button><button class="icon-button secondary-action delete" data-action="delete" aria-label="Delete task" title="Delete task">${icon('trash')}</button></div></article>`;
 }
-function render() {
+function render(added = new Set()) {
   const activeFocus = document.activeElement;
   const focusedRow = activeFocus?.closest('.task-row');
   const focusMemory = focusedRow ? { id: focusedRow.dataset.id, action: activeFocus.dataset.action || 'checkbox' } : null;
   const total = state.tasks.length, completed = state.tasks.filter(t => t.done).length;
-  $('#all-count').textContent = total - completed;
-  $('#starred-count').textContent = state.tasks.filter(t => t.starred && !t.done).length;
-  $('#completed-count').textContent = completed;
-  document.querySelectorAll('[data-view]').forEach(button => {
-    button.classList.toggle('selected',button.dataset.view === view);
-    if(button.dataset.view === view) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current');
-  });
-  $('#page-title').textContent = viewCopy[view];
-  const base = state.tasks.filter(t => view === 'starred' ? t.starred : view === 'completed' ? t.done : true);
+  $('#window-title').textContent = state.rolledUp ? `${total - completed} active task${total - completed === 1 ? '' : 's'}` : 'Checkpoint';
+  document.body.classList.toggle('rolled-up', Boolean(state.rolledUp));
+  $('.widget-main').inert = Boolean(state.rolledUp);
+  if (state.rolledUp) document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+  $('#pin-toggle').setAttribute('aria-pressed', String(state.settings.alwaysOnTop));
+  $('#pin-toggle').title = state.settings.alwaysOnTop ? 'Always on top: on' : 'Always on top: off';
+  $('#page-title').textContent = viewCopy[filter];
+  const base = state.tasks;
   $('#filter-all-count').textContent = base.length;
-  $('.task-tabs').hidden = view === 'completed';
-  $('#add-form').hidden = view === 'completed';
+  $('#add-form').hidden = filter === 'done';
   document.querySelectorAll('[data-filter]').forEach(button => {
     button.classList.toggle('active',button.dataset.filter === filter);
     button.setAttribute('aria-pressed',String(button.dataset.filter === filter));
   });
   const visible = base.filter(t => (filter === 'active' ? !t.done : filter === 'done' ? t.done : true) && t.text.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-  visible.sort((a,b) => sort === 'az' ? a.text.localeCompare(b.text) : sort === 'oldest' ? a.createdAt.localeCompare(b.createdAt) : b.createdAt.localeCompare(a.createdAt));
+  visible.sort((a,b) => ({low:1,medium:2,high:3}[b.priority] - {low:1,medium:2,high:3}[a.priority]) || (sort === 'az' ? a.text.localeCompare(b.text) : sort === 'oldest' ? a.createdAt.localeCompare(b.createdAt) : b.createdAt.localeCompare(a.createdAt)));
   const undone = visible.filter(t => !t.done), done = visible.filter(t => t.done);
-  $('#task-list').innerHTML = undone.map(renderTask).join('') + (done.length && undone.length ? `<div class="section-label">Completed · ${done.length}</div>` : '') + done.map(renderTask).join('');
+  const markup = undone.map(renderTask).join('') + (done.length && undone.length ? `<div class="section-label">Completed · ${done.length}</div>` : '') + done.map(renderTask).join('');
+  if (markup !== listMarkup) {
+    const oldRows = [...document.querySelectorAll('.task-row')];
+    const positions = new Map(oldRows.map(row => [row.dataset.id, row.getBoundingClientRect().top]));
+    gsap.killTweensOf(oldRows);
+    $('#task-list').innerHTML = markup; listMarkup = markup;
+    for (const row of document.querySelectorAll('.task-row')) {
+      if (added.has(row.dataset.id)) motion.enter(row);
+      else if (positions.has(row.dataset.id) && !motion.reduced()) {
+        const y = positions.get(row.dataset.id) - row.getBoundingClientRect().top;
+        if (y) gsap.fromTo(row, { y }, { y: 0, duration: .3, ease: 'power2.out', clearProps: 'transform' });
+      }
+    }
+  }
   if (focusMemory) {
     const row = [...document.querySelectorAll('.task-row')].find(el => el.dataset.id === focusMemory.id);
     row?.querySelector(focusMemory.action === 'checkbox' ? '.task-checkbox' : `[data-action="${focusMemory.action}"]`)?.focus({preventScroll:true});
   }
+  for (const row of document.querySelectorAll('.task-row')) {
+    row.querySelector('.task-checkbox').checked = state.tasks.find(task => task.id === row.dataset.id).done;
+    row.querySelectorAll('button,input,select').forEach(control => { control.disabled = pending.has(row.dataset.id); });
+  }
   $('#empty-state').hidden = visible.length > 0;
   $('#list-footer').hidden = visible.length === 0;
   $('#remaining-count').textContent = query ? `${visible.length} matching task${visible.length === 1 ? '' : 's'}` : `${base.filter(t => !t.done).length} left to do`;
-  $('#empty-add').hidden = Boolean(query) || view !== 'all' || filter !== 'all';
+  $('#empty-add').hidden = Boolean(query) || filter !== 'all';
   if (!visible.length) {
-    const emptyCopy = query ? ['No tasks found', 'Try another search.'] : view === 'starred' ? ['No starred tasks', 'Star a task to find it here.'] : view === 'completed' || filter === 'done' ? ['No completed tasks', 'Completed tasks will appear here.'] : filter === 'active' && total ? ['No active tasks', 'All tasks are complete.'] : ['No tasks yet', 'Add a task to get started.'];
+    const emptyCopy = query ? ['No tasks found', 'Try another search.'] : filter === 'done' ? ['No completed tasks', 'Completed tasks will appear here.'] : filter === 'active' && total ? ['No active tasks', 'All tasks are complete.'] : ['No tasks yet', 'Add a task to get started.'];
     $('#empty-title').textContent = emptyCopy[0];
     $('#empty-description').textContent = emptyCopy[1];
   }
   $('#shortcut-select').value = state.settings.shortcut;
   $('#shortcut-status').textContent = state.shortcutRegistered ? 'Available while Checkpoint is running.' : 'Unavailable. Choose a different shortcut.';
   $('#shortcut-status').classList.toggle('error', !state.shortcutRegistered);
-  const notices = [state.recoveryMessage, !state.shortcutRegistered ? 'Quick capture shortcut unavailable. Change it in Settings.' : ''].filter(Boolean);
+  $('#rollup-shortcut-select').value = state.settings.rollupShortcut;
+  $('#rollup-shortcut-status').textContent = state.rollupRegistered ? 'Press once to roll up to the active count; press again to expand.' : 'Unavailable. Choose a different shortcut.';
+  $('#rollup-shortcut-status').classList.toggle('error', !state.rollupRegistered);
+  $('#startup-toggle').checked = state.settings.launchAtStartup;
+  $('#cleanup-toggle').checked = state.settings.autoDeleteDone;
+  if (document.activeElement !== $('#retention-days')) $('#retention-days').value = state.settings.retentionDays;
+  $('#retention-days').disabled = !state.settings.autoDeleteDone;
+  $('#app-version').textContent = `v${state.appVersion}`;
+  const notices = [state.recoveryMessage, state.startupError, state.cleanupError, !state.shortcutRegistered ? 'Quick capture shortcut unavailable. Change it in Settings.' : '', !state.rollupRegistered ? 'Roll-up shortcut unavailable. Change it in Settings.' : ''].filter(Boolean);
   $('#system-notice').hidden = !notices.length;
   $('#system-notice').textContent = notices.join(' ');
 }
 
 document.querySelectorAll('[data-window]').forEach(button => button.addEventListener('click', () => { void request(api.windowAction(button.dataset.window)).catch(()=>{}); }));
-document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
 document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => {filter=button.dataset.filter;render();}));
 $('#empty-add').addEventListener('click',focusInput);
-$('#tip-capture').addEventListener('click',()=>{ void request(api.showCapture()).catch(()=>{}); });
 $('#search').addEventListener('input',event=>{query=event.target.value;render();});
 $('#sort').addEventListener('change',event=>{sort=event.target.value;render();});
 $('#add-form').addEventListener('submit',async event=>{
@@ -107,31 +138,39 @@ $('#add-form').addEventListener('submit',async event=>{
   adding=true;
   $('#add-form button').disabled=true;
   try {
-    await request(api.addTask(text, view === 'starred'));
-    input.value=''; query=''; $('#search').value=''; filter='all'; render();
+    await request(api.addTask(text, $('#new-priority').value));
+    input.value=''; query=''; $('#search').value=''; render();
     notify('Task added.');
   } catch {} finally {adding=false;$('#add-form button').disabled=false;input.focus();}
 });
 $('#task-list').addEventListener('change',async event=>{
+  if(event.target.matches('.priority-select')) {
+    const select = event.target, id = select.closest('.task-row').dataset.id;
+    if(pending.has(id)) return;
+    pending.add(id); select.disabled = true;
+    try { await request(api.updateTask(id, {priority: select.value})); }
+    catch { select.value = state.tasks.find(task => task.id === id).priority; }
+    finally { pending.delete(id); render(); }
+    return;
+  }
   if(!event.target.matches('.task-checkbox'))return;
   const id=event.target.closest('.task-row').dataset.id, done=event.target.checked;
   if(pending.has(id))return;
   pending.add(id); event.target.disabled=true;
-  try {await request(api.updateTask(id,{done}));} catch {render();} finally {pending.delete(id);}
+  try {await request(api.updateTask(id,{done}));} catch {render();} finally {pending.delete(id);render();}
 });
 $('#task-list').addEventListener('click',async event=>{
   const button=event.target.closest('button[data-action]');if(!button)return;
   const id=button.closest('.task-row').dataset.id;
   const task=state.tasks.find(t=>t.id===id);if(!task)return;
   if(button.dataset.action==='edit') {
-    editId=id;$('#edit-input').value=task.text;$('#edit-dialog').showModal();$('#edit-input').focus();return;
+    editId=id;$('#edit-input').value=task.text;motion.dialog($('#edit-dialog'));$('#edit-input').focus();return;
   }
   if(pending.has(id))return;
   pending.add(id);button.disabled=true;
   try {
-    if(button.dataset.action==='star')await request(api.updateTask(id,{starred:!task.starred}));
     if(button.dataset.action==='delete'){await request(api.removeTask(id));notify('Task deleted.',{restoreId:id});}
-  } catch {render();} finally {pending.delete(id);}
+  } catch {render();} finally {pending.delete(id);render();}
 });
 $('#edit-form').addEventListener('submit',async event=>{
   event.preventDefault();const button=$('#edit-form [type="submit"]');button.disabled=true;
@@ -139,7 +178,23 @@ $('#edit-form').addEventListener('submit',async event=>{
   catch{}finally{button.disabled=false;}
 });
 for(const id of ['#edit-close','#edit-cancel'])$(id).addEventListener('click',()=>$('#edit-dialog').close());
-$('#settings-open').addEventListener('click',()=>$('#settings-dialog').showModal());
+$('#settings-open').addEventListener('click',()=>motion.dialog($('#settings-dialog')));
+$('#rollup-shortcut-select').addEventListener('change', async event => {
+  const select = event.target; select.disabled = true;
+  try { await request(api.setRollupShortcut(select.value)); notify('Roll-up shortcut updated.'); }
+  catch { select.value = state.settings.rollupShortcut; }
+  finally { select.disabled = false; }
+});
+for (const [selector, key] of [['#startup-toggle', 'launchAtStartup'], ['#cleanup-toggle', 'autoDeleteDone'], ['#retention-days', 'retentionDays']]) {
+  $(selector).addEventListener('change', async event => {
+    const input = event.target;
+    if (!input.checkValidity()) { input.reportValidity(); input.value = state.settings.retentionDays; return; }
+    input.disabled = true;
+    try { await request(api.updateSettings({ [key]: input.type === 'checkbox' ? input.checked : Number(input.value) })); notify('Settings saved.'); }
+    catch { input.value = state.settings.retentionDays; }
+    finally { input.disabled = false; render(); }
+  });
+}
 $('#shortcut-select').addEventListener('change',async event=>{
   const select=event.target;select.disabled=true;
   try{await request(api.setShortcut(select.value));notify('Quick capture shortcut updated.');}

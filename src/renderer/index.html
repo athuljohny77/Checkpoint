@@ -9,8 +9,9 @@
 </head>
 <body class="widget-body">
   <header class="titlebar">
-    <span class="titlebar-name">Checkpoint</span>
+    <span class="titlebar-name" id="window-title">Checkpoint</span>
     <div class="window-controls">
+      <button id="pin-toggle" data-window="pin" aria-label="Always on top" aria-pressed="true" title="Always on top"><i data-icon="pin"></i></button>
       <button data-window="minimize" aria-label="Minimize" title="Minimize"><i data-icon="minus"></i></button>
       <button data-window="close" aria-label="Close to tray" title="Hide"><i data-icon="x"></i></button>
     </div>
@@ -19,15 +20,9 @@
     <section class="widget-heading">
       <h1 id="page-title">All tasks</h1>
       <div class="widget-actions">
-        <button id="tip-capture" class="icon-button" title="Quick capture" aria-label="Quick capture"><i data-icon="bolt"></i></button>
         <button id="settings-open" class="icon-button" title="Settings" aria-label="Settings"><i data-icon="settings"></i></button>
       </div>
     </section>
-    <nav class="widget-views" aria-label="Task views">
-      <button class="nav-item selected" data-view="all" aria-current="page"><span>All</span><span class="nav-count" id="all-count">0</span></button>
-      <button class="nav-item" data-view="starred"><span>Starred</span><span class="nav-count" id="starred-count">0</span></button>
-      <button class="nav-item" data-view="completed"><span>Done</span><span class="nav-count" id="completed-count">0</span></button>
-    </nav>
     <div id="system-notice" class="system-notice" hidden role="status"></div>
     <section class="tasks-section" aria-label="Tasks">
       <div class="task-toolbar">
@@ -44,6 +39,7 @@
       <form id="add-form" class="inline-add">
         <span class="add-circle"><i data-icon="plus"></i></span>
         <input id="task-input" type="text" maxlength="500" autocomplete="off" placeholder="Add a task" aria-label="New task">
+        <select id="new-priority" aria-label="New task priority" class="priority-select"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
         <button type="submit" aria-label="Add task" title="Add task"><span>Add</span><i data-icon="corner-down-left"></i></button>
       </form>
       <div id="task-list" class="task-list"></div>
@@ -63,9 +59,15 @@
       <label class="setting-label" for="shortcut-select">Quick capture shortcut</label>
       <select id="shortcut-select"><option value="Control+Shift+Space">Ctrl + Shift + Space</option><option value="Control+Alt+Space">Ctrl + Alt + Space</option><option value="Control+Shift+K">Ctrl + Shift + K</option></select>
       <p id="shortcut-status" class="setting-help"></p>
-      <div class="settings-note"><i data-icon="inbox"></i><div><strong>System tray</strong><p>Closing the window hides it. Right-click the tray icon to quit.</p></div></div>
-      <div class="settings-note"><i data-icon="shield"></i><div><strong>Local storage</strong><p>Tasks are saved on this Windows account.</p></div></div>
-      <div class="dialog-footer"><span>Checkpoint <span class="version">v1.0.0</span></span><button type="button" class="text-button muted" id="quit-app">Quit app <i data-icon="arrow-right"></i></button></div>
+      <label class="setting-label" for="rollup-shortcut-select">Roll up / expand shortcut</label>
+      <select id="rollup-shortcut-select"><option value="Control+Shift+M">Ctrl + Shift + M</option><option value="Control+Alt+M">Ctrl + Alt + M</option><option value="Control+Shift+Up">Ctrl + Shift + ↑</option></select>
+      <p id="rollup-shortcut-status" class="setting-help"></p>
+      <label class="setting-toggle"><span>Launch when Windows starts</span><input id="startup-toggle" type="checkbox"></label>
+      <label class="setting-toggle"><span>Auto-delete completed tasks</span><input id="cleanup-toggle" type="checkbox"></label>
+      <label class="setting-label" for="retention-days">Delete after (days)</label>
+      <input id="retention-days" type="number" min="1" max="365" step="1" value="1">
+      <p class="setting-help">Measured from completion. Expired tasks are permanently removed while the app is running or next opens.</p>
+      <div class="dialog-footer"><div>Checkpoint <span id="app-version" class="version"></span><p class="dev-credit">by Athul Johny © 2026</p></div><button type="button" class="text-button muted" id="quit-app">Quit app <i data-icon="arrow-right"></i></button></div>
     </form>
   </dialog>
   <dialog id="edit-dialog">
@@ -77,6 +79,8 @@
     </form>
   </dialog>
   <script src="icons.js"></script>
+  <script src="../../node_modules/gsap/dist/gsap.min.js"></script>
+  <script src="motion.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

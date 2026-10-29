@@ -1,7 +1,7 @@
 {
   "name": "checkpoint",
   "productName": "Checkpoint",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "A quiet place for your tasks. Capture a thought from anywhere on Windows.",
   "author": "Checkpoint",
   "license": "MIT",
@@ -21,20 +21,33 @@
   "build": {
     "appId": "com.checkpoint.desktop",
     "productName": "Checkpoint",
-    "directories": { "output": "dist" },
-    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
     "asar": true,
     "win": {
       "icon": "assets/checkpoint.ico",
-      "target": ["portable"],
+      "target": [
+        "portable"
+      ],
       "signExecutable": false
     },
-    "portable": { "artifactName": "Checkpoint-${version}-Windows.exe" },
+    "portable": {
+      "artifactName": "Checkpoint-${version}-Windows.exe"
+    },
     "nsis": {
       "artifactName": "Checkpoint-${version}-Setup.exe",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
     }
+  },
+  "dependencies": {
+    "gsap": "3.15.0"
   }
 }

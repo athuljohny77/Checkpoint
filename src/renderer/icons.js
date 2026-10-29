@@ -1,4 +1,6 @@
 const iconPaths = {
+  pin: '<path d="m16 3 5 5-4 2-3 5-2 2-5-5 2-2 5-3 2-4Z"/><path d="m9 15-6 6"/>',
+  'chevron-up': '<path d="m5 15 7-7 7 7"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
