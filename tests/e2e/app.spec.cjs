@@ -227,20 +227,34 @@ test('quick capture chooses priorities with 1/2/3, cancels safely, and retries f
       await capture.locator('#capture-input').fill(`${priority} capture`);
       await capture.locator('#capture-input').press('Enter');
       await expect(capture.locator('.priority-dialog')).toBeVisible();
+      await expect(capture.locator('#priority-title')).toBeFocused();
+      await expect(capture.locator('.priority-options button:focus-visible')).toHaveCount(0);
       if (key==='1') {
+        // Enter must not silently save Medium before a priority is chosen.
+        await capture.keyboard.press('Enter');
+        await expect(capture.locator('.priority-dialog')).toBeVisible();
+        await expect(page.locator('.task-row')).toHaveCount(0);
+        await capture.keyboard.press('Tab');
+        await expect(capture.getByRole('button',{name:'Cancel priority selection'})).toBeFocused();
+        await capture.keyboard.press('Tab');
+        await expect(capture.locator('[data-priority="low"]')).toBeFocused();
         await capture.keyboard.press('4');
         await expect(page.locator('.task-row')).toHaveCount(0);
         await capture.keyboard.press('Escape');
         await expect(capture.locator('.priority-dialog')).not.toBeVisible();
         await expect(capture.locator('#capture-input')).toHaveValue('low capture');
         await capture.locator('#capture-input').press('Enter');
+        await expect(capture.locator('#priority-title')).toBeFocused();
         await capture.screenshot({path:path.join(root,'artifacts','checkpoint-priority-picker.png')});
       }
       await capture.keyboard.press(key);
       await expect(page.locator('.task-row').filter({hasText:`${priority} capture`}).locator('.priority-select')).toHaveValue(priority);
+      const colors={low:'rgb(141, 191, 255)',medium:'rgb(243, 207, 116)',high:'rgb(255, 153, 145)'};
+      await expect(page.locator('.task-row').filter({hasText:`${priority} capture`}).locator('.priority-select')).toHaveCSS('color',colors[priority]);
       await expect.poll(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle().includes('Quick capture')).isVisible())).toBe(false);
     }
     await expect(page.locator('.task-text')).toHaveText(['high capture','medium capture','low capture']);
+    await page.screenshot({path:path.join(root,'artifacts','checkpoint-priority-tags.png'),animations:'disabled'});
     await page.locator('#sort').selectOption('az');
     await expect(page.locator('.task-text')).toHaveText(['high capture','medium capture','low capture']);
     await page.evaluate(()=>window.checkpoint.showCapture());
