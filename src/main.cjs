@@ -5,7 +5,7 @@ const { TaskStore, SHORTCUTS, ROLLUP_SHORTCUTS } = require('./store.cjs');
 const { gsap } = require('gsap/dist/gsap');
 const { fitBounds } = require('./window-bounds.cjs');
 const fs = require('node:fs');
-const { spawn } = require('node:child_process');
+const { startUpdateInstaller } = require('./update-installer.cjs');
 const { UpdateManager } = require('./updater.cjs');
 
 const isTest = !app.isPackaged && process.env.CHECKPOINT_TEST === '1';
@@ -81,20 +81,8 @@ async function performInstallUpdate() {
     fs.copyFileSync(path.join(__dirname, 'install-update.ps1'), helper);
     fs.writeFileSync(configPath, JSON.stringify({ download: download.file, sha256: download.sha256, version: download.version,
       pid: process.pid, mode: updateMode, target: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, ready }));
-    const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    const child = spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', helper, '-Config', configPath], {
-      detached: true, stdio: 'ignore', windowsHide: true
-    });
-    await new Promise((resolve, reject) => {
-      const started = Date.now();
-      const timer = setInterval(() => {
-        if (fs.existsSync(ready)) { clearInterval(timer); resolve(); }
-        else if (Date.now() - started > 15000) { clearInterval(timer); child.kill(); reject(new Error('The update installer could not start. Checkpoint is still running; please retry.')); }
-      }, 100);
-      child.once('error', error => { clearInterval(timer); reject(error); });
-      child.once('exit', code => { if (!fs.existsSync(ready)) { clearInterval(timer); reject(new Error(`The update installer exited before starting (${code}).`)); } });
-    });
-    child.unref();
+    fs.rmSync(path.join(directory, 'install-result.json'), { force: true });
+    await startUpdateInstaller({ helper, configPath, ready });
     updater.change({ phase: 'installing' });
     app.quit();
     return updater.snapshot();

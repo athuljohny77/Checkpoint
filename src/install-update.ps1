@@ -1,8 +1,15 @@
-param([Parameter(Mandatory=$true)][string]$Config)
+param([Parameter(Mandatory=$true)][string]$Config, [switch]$Launch)
 $ErrorActionPreference = 'Stop'
 $updateConfig = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
 $updateLog = Join-Path (Split-Path -Parent $Config) 'install-result.json'
 try {
+  if ($Launch) {
+    # Start-Process gives the worker its own hidden console. Node's detached
+    # flag uses DETACHED_PROCESS, under which Windows PowerShell skips -File.
+    $workerArguments = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $PSCommandPath), '-Config', ('"{0}"' -f $Config))
+    Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $workerArguments -WindowStyle Hidden
+    exit 0
+  }
   $hashAlgorithm = [Security.Cryptography.SHA256]::Create()
   $downloadStream = [IO.File]::OpenRead($updateConfig.download)
   try { $actualHash = [BitConverter]::ToString($hashAlgorithm.ComputeHash($downloadStream)).Replace('-', '').ToLowerInvariant() }
@@ -29,9 +36,12 @@ try {
     if (-not $replaced) { throw 'Could not replace Checkpoint. The original app is unchanged; check folder permissions and retry.' }
     Start-Process -FilePath $updateTarget -WindowStyle Hidden
   } elseif ($updateConfig.mode -eq 'installer') {
-    Start-Process -FilePath $updateConfig.download -ArgumentList '/S','--force-run' -Wait -PassThru -WindowStyle Hidden | ForEach-Object {
-      if ($_.ExitCode -ne 0) { throw "The installer exited with code $($_.ExitCode)." }
-    }
+    $installer = Start-Process -FilePath $updateConfig.download -ArgumentList '/S','--force-run' -PassThru -WindowStyle Hidden
+    # Retain the process handle before waiting; Windows PowerShell can otherwise
+    # return a null ExitCode for an already completed Start-Process -Wait result.
+    $null = $installer.Handle
+    $installer.WaitForExit()
+    if ($installer.ExitCode -ne 0) { throw "The installer exited with code $($installer.ExitCode)." }
   } else { throw 'Unknown update installation mode.' }
   @{ok=$true;version=$updateConfig.version} | ConvertTo-Json | Set-Content -LiteralPath $updateLog -Encoding UTF8
 } catch {

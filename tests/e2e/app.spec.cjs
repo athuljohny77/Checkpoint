@@ -200,6 +200,8 @@ test('native global shortcut opens capture with the main window hidden',async()=
   try {execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',helper,'-CheckDesktop'],{windowsHide:true});}
   catch(error){if(error.status===2)test.skip(true,'This automation session cannot access the Windows input desktop.');else throw error;}
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'checkpoint-hotkey-'));
+  // Use alternate shortcuts so an installed Checkpoint instance can stay open.
+  fs.writeFileSync(path.join(directory,'tasks.json'),JSON.stringify({version:1,tasks:[],settings:{shortcut:'Control+Alt+Space',rollupShortcut:'Control+Alt+M'}}));
   let app;
   try {
     const launched=await launch(directory);app=launched.app;
@@ -208,9 +210,9 @@ test('native global shortcut opens capture with the main window hidden',async()=
     catch(error){if(error.status===2)test.skip(true,'Windows denied synthetic keyboard input in this session.');else throw error;}
     await expect.poll(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle().includes('Quick capture')).isVisible())).toBe(true);
     await launched.page.evaluate(()=>window.checkpoint.hideCapture());
-    execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',helper,'-Keys','^+m'],{windowsHide:true});
+    execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',helper,'-Keys','^%m'],{windowsHide:true});
     await expect(launched.page.locator('body')).toHaveClass(/rolled-up/);
-    execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',helper,'-Keys','^+m'],{windowsHide:true});
+    execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',helper,'-Keys','^%m'],{windowsHide:true});
     await expect(launched.page.locator('body')).not.toHaveClass(/rolled-up/);
   } finally {if(app)await app.close();fs.rmSync(directory,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });

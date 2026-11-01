@@ -4,7 +4,7 @@ A compact Windows task widget with optional always-on-top mode.
 
 ## Run on Windows
 
-Download the portable EXE or installer from [GitHub Releases](https://github.com/athuljohny77/Checkpoint/releases/latest). The portable app needs no installation or separate Node.js runtime. Keep the executable somewhere permanent and writable. Launch at Windows sign-in is enabled by default and can be disabled in Settings; the portable startup entry points to this executable.
+Download and run the Windows installer from [GitHub Releases](https://github.com/athuljohny77/Checkpoint/releases/latest). No separate Node.js runtime is required. Launch at Windows sign-in is enabled by default and can be disabled in Settings.
 
 - **Ctrl + Shift + Space** opens quick capture in the center of the display under your pointer, even while another app is focused.
 - Type a task and press **Enter** to choose its priority, then **1** for Low, **2** for Medium, or **3** for High to save. You can also click a priority. **Esc** returns from the priority picker to your draft; press it again to dismiss capture. An unfinished draft stays there until you save it or quit.
@@ -21,11 +21,11 @@ Completed tasks are permanently deleted **24 hours after completion** by default
 
 ## Updates and releases
 
-**Settings → Check for updates** checks the latest stable release in `athuljohny77/Checkpoint`. Review its notes, choose **Install update…**, and confirm **Download and install**. Checkpoint verifies the SHA-256 checksum before closing, installing, and reopening. The portable launcher is replaced at its existing path; the previous launcher is retained as `.previous`. The installer distribution uses the matching NSIS update. Tasks and preferences stay in the same data folder.
+**Settings → Check for updates** checks the latest stable release in `athuljohny77/Checkpoint`. Review its notes, choose **Install update…**, and confirm **Download and install**. Checkpoint verifies the SHA-256 checksum before closing, installing, and reopening. Updates use the Windows installer. Tasks and preferences stay in the same data folder.
 
-Packaged builds check 15 seconds after launch and every six hours while running. A Windows tray notification and tray menu entry open the update settings. Checks never install or download an EXE without confirmation. Windows notification preferences may suppress the balloon; the menu entry remains available. Update errors can be retried from Settings. Versions before 1.3.0 require the first download manually.
+Packaged builds check 15 seconds after launch and every six hours while running. A Windows tray notification and tray menu entry open the update settings. Checks never install or download an EXE without confirmation. Windows notification preferences may suppress the balloon; the menu entry remains available. Update errors can be retried from Settings. Versions through 1.3.1 need a one-time manual installer download to fix the update handoff. Quit Checkpoint from its tray menu, then run the latest installer; tasks and settings are preserved.
 
-The **Windows release** GitHub Actions workflow runs on a version change pushed to `main`, a `v*` tag, or manual dispatch. Bump `package.json` and `package-lock.json` together (`npm version patch --no-git-tag-version`), optionally add `release-notes/vX.Y.Z.md`, and push to `main`. The workflow tests and builds both Windows EXEs, generates `SHA256SUMS.txt`, creates tag `vX.Y.Z` with release notes, uploads every asset to a draft, and publishes only after all uploads succeed. Published versions are never overwritten; bump the version for another release. Repository Actions must have the workflow's requested `contents: write` permission.
+The **Windows release** GitHub Actions workflow runs on a version change pushed to `main`, a `v*` tag, or manual dispatch. Bump `package.json` and `package-lock.json` together (`npm version patch --no-git-tag-version`), optionally add `release-notes/vX.Y.Z.md`, and push to `main`. The workflow tests and builds the Windows installer, generates `SHA256SUMS.txt`, creates tag `vX.Y.Z` with release notes, uploads every asset to a draft, and publishes only after all uploads succeed. Published versions are never overwritten; bump the version for another release. Repository Actions must have the workflow's requested `contents: write` permission.
 
 ## Development
 
@@ -39,7 +39,7 @@ npm.cmd run test:e2e
 npm.cmd run build
 ```
 
-`npm.cmd` works in PowerShell without changing its execution policy. `npm.cmd run build:installer` optionally creates an NSIS installer. Release artifacts are unsigned; Windows may display a publisher warning. Release signing should be configured before public distribution.
+`npm.cmd` works in PowerShell without changing its execution policy. `npm.cmd run build`, `build:installer`, and `build:release` create the NSIS installer. Releases from 1.3.2 onward contain the installer and its checksums. Release artifacts are unsigned; Windows may display a publisher warning. Release signing should be configured before public distribution.
 
 The end-to-end suite verifies OS shortcut registration, capture positioning, task flows, and restart persistence. Its native keypress test skips when Windows denies access to the input desktop or synthetic input. In that case, manually verify **Ctrl + Shift + Space** while another app is focused and while Checkpoint is in the tray.
 
